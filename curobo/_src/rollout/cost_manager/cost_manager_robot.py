@@ -177,6 +177,12 @@ class RobotCostManager:
             config.tool_pose_cfg.set_tool_frames(transition_model.robot_model.tool_frames)
             self.register_cost("tool_pose", ToolPoseCost(config.tool_pose_cfg))
 
+        # Relative pose between two tool frames
+        if config.relative_pose_cfg is not None:
+            relative_pose_cost = config.relative_pose_cfg.class_type(config.relative_pose_cfg)
+            relative_pose_cost.set_tool_frames(transition_model.robot_model.tool_frames)
+            self.register_cost("relative_pose", relative_pose_cost)
+
         # Start cspace distance
         if config.start_cspace_dist_cfg is not None:
             config.start_cspace_dist_cfg.initialize_from_transition_model(transition_model)
@@ -236,6 +242,17 @@ class RobotCostManager:
                         goal.idxs_link_pose,
                     )
                     cost_collection.add(cost_value, "tool_pose")
+
+        # Relative pose between two tool frames
+        if self.has_cost("relative_pose"):
+            relative_pose_cost = self.get_cost("relative_pose")
+            if relative_pose_cost.enabled:
+                with self._stream_context("relative_pose"):
+                    cost_value, _, _ = relative_pose_cost.forward(
+                        state.tool_poses,
+                        idxs_goal=goal.idxs_link_pose if goal is not None else None,
+                    )
+                    cost_collection.add(cost_value, "relative_pose")
 
         # Cspace bounds/limits
         if self.has_cost("cspace"):
@@ -356,6 +373,19 @@ class RobotCostManager:
                 convergence.add(rotation_error, "tool_pose_orientation_tolerance")
                 convergence.add(goalset_idx, "tool_pose_goalset_index")
 
+        if self.has_cost("relative_pose"):
+            relative_pose_cost = self.get_cost("relative_pose")
+            if relative_pose_cost.enabled:
+                _, position_error, rotation_error = relative_pose_cost.forward(
+                    state.tool_poses,
+                    idxs_goal=goal.idxs_link_pose,
+                )
+                convergence.add(position_error, "relative_pose_position_tolerance")
+                convergence.add(rotation_error, "relative_pose_orientation_tolerance")
+                convergence.add(
+                    relative_pose_cost._goalset_idx_zero, "relative_pose_goalset_index"
+                )
+
         return convergence
 
     # -- Update params --
@@ -373,6 +403,10 @@ class RobotCostManager:
                 return
             if tool_pose_cost is not None:
                 tool_pose_cost.update_tool_pose_criteria(tool_pose_criteria)
+        if "relative_pose_goal" in kwargs:
+            relative_pose_cost = self.get_cost("relative_pose")
+            if relative_pose_cost is not None:
+                relative_pose_cost.update_goal(kwargs["relative_pose_goal"])
         if "dt" in kwargs:
             self.update_dt(kwargs["dt"])
 
