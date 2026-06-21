@@ -54,6 +54,15 @@ class RobotCostManager:
         self._horizon: Optional[int] = None
         self._costs_streams: Dict[str, Any] = {}
         self._costs_events: Dict[str, Any] = {}
+        # Generic user-registered extra cost terms: name -> callable(state) that
+        # returns a (batch, horizon, 1) cost tensor. Lets downstream projects add
+        # custom autograd costs (e.g. object-frame SDF collision) without editing
+        # the cost-manager config schema. Summed in forward() like native costs.
+        self._extra_costs: Dict[str, Any] = {}
+
+    def add_extra_cost(self, name: str, fn) -> None:
+        """Register a custom cost: fn(state) -> (batch, horizon, 1) tensor."""
+        self._extra_costs[name] = fn
 
     # -- Registry --
 
@@ -183,6 +192,11 @@ class RobotCostManager:
             relative_pose_cost.set_tool_frames(transition_model.robot_model.tool_frames)
             self.register_cost("relative_pose", relative_pose_cost)
 
+        # Closed-form execution-time (redundancy resolution)
+        if config.exec_time_cfg is not None:
+            config.exec_time_cfg.initialize_from_transition_model(transition_model)
+            self.register_cost("exec_time", config.exec_time_cfg.class_type(config.exec_time_cfg))
+
         # Start cspace distance
         if config.start_cspace_dist_cfg is not None:
             config.start_cspace_dist_cfg.initialize_from_transition_model(transition_model)
@@ -254,6 +268,20 @@ class RobotCostManager:
                     )
                     cost_collection.add(cost_value, "relative_pose")
 
+        # Closed-form execution-time (PTP, redundancy resolution)
+        if self.has_cost("exec_time"):
+            exec_time_cost = self.get_cost("exec_time")
+            if exec_time_cost.enabled:
+                with self._stream_context("exec_time"):
+                    cost_value = exec_time_cost.forward(
+                        state.joint_state,
+                        current_joint_state=goal.current_js if goal is not None else None,
+                        idxs_current_joint_state=(
+                            goal.idxs_current_js if goal is not None else None
+                        ),
+                    )
+                    cost_collection.add(cost_value, "exec_time")
+
         # Cspace bounds/limits
         if self.has_cost("cspace"):
             cspace_cost = self.get_cost("cspace")
@@ -298,6 +326,11 @@ class RobotCostManager:
                         trajectory_dt=state.joint_state.dt,
                     )
                     cost_collection.add(cost_value, "scene_collision")
+
+        for _name, _fn in self._extra_costs.items():
+            _cv = _fn(state)
+            if _cv is not None:
+                cost_collection.add(_cv, _name)
 
         synchronize_cuda_streams(self._costs_events, self.device_cfg.device)
         return cost_collection

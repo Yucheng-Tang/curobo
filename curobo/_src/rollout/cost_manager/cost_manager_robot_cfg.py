@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 # CuRobo
 from curobo._src.cost.cost_cspace_cfg import CSpaceCostCfg
 from curobo._src.cost.cost_cspace_dist_cfg import CSpaceDistCostCfg
+from curobo._src.cost.cost_exec_time_cfg import ExecTimeCostCfg
 from curobo._src.cost.cost_relative_pose_cfg import RelativePoseCostCfg
 from curobo._src.cost.cost_scene_collision_cfg import SceneCollisionCostCfg
 from curobo._src.cost.cost_self_collision_cfg import SelfCollisionCostCfg
@@ -67,6 +68,10 @@ class RobotCostManagerCfg:
     #: expressed in base_frame). None disables the relative pose objective.
     relative_pose_cfg: Optional[RelativePoseCostCfg] = None
 
+    #: Closed-form point-to-point execution-time cost (redundancy resolution
+    #: toward fast-to-execute configs). None disables it.
+    exec_time_cfg: Optional[ExecTimeCostCfg] = None
+
     def __post_init__(self):
         from .cost_manager_robot import RobotCostManager
 
@@ -91,6 +96,7 @@ class RobotCostManagerCfg:
             "target_cspace_dist_cfg": CSpaceDistCostCfg,
             "tool_pose_cfg": ToolPoseCostCfg,
             "relative_pose_cfg": RelativePoseCostCfg,
+            "exec_time_cfg": ExecTimeCostCfg,
         }
         data = {}
         for k, cfg_class in cost_key_map.items():
