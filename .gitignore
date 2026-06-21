@@ -165,3 +165,7 @@ docker/pkgs/*
 *.svg
 *.SVG
 !docs/images/*.svg
+
+# experiment-generated figures (viz_dual_fr3.py etc.) — regenerable, not committed
+relpose_experiments/*.png
+relpose_experiments/*.gif
